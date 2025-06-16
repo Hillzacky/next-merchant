@@ -35,9 +35,9 @@ jobs:
           # Your Vercel token
           token: ${{ secrets.VERCEL_TOKEN }}
           # Your project ID
-          projectId: your_vercel_project_id
+          projectId: team_mTad3ksZSRb51P7YNbhXCqt8
           # Your org ID
-          orgId: your_vercel_org_id
+          orgId: team_mTad3ksZSRb51P7YNbhXCqt8
       - name: Detect package manager
         id: detect-package-manager
         run: |
