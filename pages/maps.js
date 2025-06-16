@@ -1,4 +1,5 @@
 import * as browser from './browser.js';
+import { getDB, setDB } from './db.js';
 const { openBrowser, closeBrowser, waitForScrollFeed, scroll, qs, qsAll, getClassName, getText, getHtml, waitSelector, waitNetwork, loadState, rest } = browser;
 import { getPosition, saveAsCsv, save, load, webpath } from './utilities.js';
 
@@ -57,13 +58,14 @@ async function getData(url) {
               }
         const addr = alamat && alamat.length > 0 ? alamat.split(":")[1].trim() : "No address";
         const phone = await kontak(ie);
-        results.push({ title, addr, phone });
+        results.push({ name: title, address: addr, phone });
         console.log(`Processed: ${title}`);
       }
     } catch (error) {
       console.error("Error processing card:", error);
     }
   }
+  await setDB(results);
   await save(results);
   await saveAsCsv(results);
   await closeBrowser(ob);
@@ -72,8 +74,8 @@ async function getData(url) {
 function viewResult(results) {
   console.log('\nHasil Akhir:');
   results.forEach((item, index) => {
-    console.log(`\n${index + 1}. ${item.title}`);
-    console.log(`   Alamat: ${item.addr}`);
+    console.log(`\n${index + 1}. ${item.name}`);
+    console.log(`   Alamat: ${item.address}`);
     console.log(`   Telepon: ${item.phone}`);
   }); 
 }
