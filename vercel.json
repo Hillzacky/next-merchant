@@ -16,8 +16,16 @@
       "dest": "/index.js"
     },
     {
-      "src": "/api/(.*)",
-      "dest": "/pages/api/$1"
+      "src": "/api/single",
+      "dest": "/pages/api/single.js"
+    },
+    {
+      "src": "/api/bulk",
+      "dest": "/pages/api/bulk.js"
+    },
+    {
+      "src": "/api/init-db",
+      "dest": "/pages/api/init-db.js"
     }
   ]
 }
