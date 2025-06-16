@@ -1,15 +1,13 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "pages/_app.js",
-      "use": "@vercel/next"
+  "version": 3,
+  "builds": [],
+  "functions": {
+    "api": {
+        "src": "index.js",
+        "maxDuration": 360
     }
-  ],
+  },
   "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/index"
-    }
+    { "src": "/api(.*)", "dest": "/api/$1" }
   ]
 }
