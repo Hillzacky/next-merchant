@@ -13,7 +13,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { find = 'toko', mylonglat = '@-6.9351394,106.9323303,13z' } = req.query;
+    // Get find parameter from URL path or query
+    const find = req.query.find || req.url.split('/').pop();
+    const { mylonglat = '@-6.9351394,106.9323303,13z' } = req.query;
+
+    if (!find) {
+      res.status(400).json({ error: 'Find parameter is required' });
+      return;
+    }
 
     if (!mylonglat) {
       res.status(400).json({ error: 'Coordinate parameter is required' });
