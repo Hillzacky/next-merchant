@@ -1,12 +1,11 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const { up } = require('../db.js');
+import { up } from '../db.js';
 
 router.get('/init-db', async (req, res) => {
-    const { id } = req.params;
     const { API_KEY, CONNECTION_STRING } = process.env;
     try {
-        const data = up();
+        const data = await up();
         res.json(data);
     } catch (error) {
         console.error('Error:', error);
@@ -14,4 +13,4 @@ router.get('/init-db', async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;

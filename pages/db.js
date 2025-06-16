@@ -27,7 +27,6 @@ async function getData(phone = null) {
   return m
 }
 
-
 async function setData({ name, address, phone }) {
   const m = await sql`
     insert into merchant
@@ -39,4 +38,4 @@ async function setData({ name, address, phone }) {
   return m
 }
 
-module.exports = { up, getData, setData }
+export { up, getData, setData }
