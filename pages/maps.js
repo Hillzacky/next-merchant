@@ -91,4 +91,4 @@ async function getMultipleData(find) {
   console.info("working complete.")
 }
 
-module.exports = { endPoint, buildUrl, getData, getMultipleData }
+export { endPoint, buildUrl, getData, getMultipleData }
