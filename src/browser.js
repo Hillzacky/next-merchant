@@ -12,6 +12,17 @@ EventEmitter.defaultMaxListeners = 30;
 // Keep track of temp directories to clean up on exit
 const tempDirectories = [];
 
+// Konfigurasi untuk Vercel
+const isDev = process.env.NODE_ENV === 'development';
+
+// Fungsi untuk mendapatkan executable path
+async function getExecutablePath() {
+  if (isDev) {
+    return null; // Gunakan Chrome lokal saat development
+  }
+  return await chromium.executablePath();
+}
+
 // Clean up function for handling exit
 async function cleanupResources() {
   console.log('Cleaning up resources...');
@@ -63,140 +74,49 @@ process.on('uncaughtException', async (error) => {
 });
 
 async function openBrowser(options = {}) {
-  const platform = process.platform;
-  let browser;
-  let launchOptions = {
-    headless: options.headless ?? true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--disable-gpu',
-      '--window-size=1280,720'
-    ],
-    ignoreDefaultArgs: false
-  };
-
-  // Universal Linux (selain Ubuntu)
-  const isLinux = platform === 'linux';
-  // Ubuntu biasanya terdeteksi sebagai 'linux', jadi kita cek env
-  const isUbuntu = isLinux && (process.env.XDG_CURRENT_DESKTOP?.toLowerCase().includes('ubuntu') || process.env.DESKTOP_SESSION?.toLowerCase().includes('ubuntu'));
-  const isMac = platform === 'darwin';
-  const isWin = platform === 'win32';
-
-  if (isWin) {
-    // Windows
-    launchOptions = {
-      ...launchOptions,
-      channel: 'chrome', // gunakan Chrome jika ada
-      args: [
-        ...launchOptions.args,
-        '--disable-accelerated-2d-canvas',
-        '--disable-dev-shm-usage',
-        '--disable-features=site-per-process',
-        '--window-size=1280,720'
-      ]
-    };
-  } else if (isMac) {
-    // macOS
-    launchOptions = {
-      ...launchOptions,
-      channel: 'chrome',
-      args: [
-        ...launchOptions.args,
-        '--disable-renderer-backgrounding',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-ipc-flooding-protection',
-        '--disable-hang-monitor',
-        '--window-size=1280,720'
-      ]
-    };
-  } else if (isUbuntu) {
-    // Ubuntu
-    launchOptions = {
-      ...launchOptions,
-      args: [
-        ...launchOptions.args,
-        '--disable-accelerated-2d-canvas',
-        '--disable-dev-shm-usage',
-        '--disable-features=site-per-process',
-        '--window-size=1280,720'
-      ]
-    };
-  } else if (isLinux) {
-    // Universal Linux (selain Ubuntu)
-    launchOptions = {
-      ...launchOptions,
-      args: [
-        ...launchOptions.args,
-        '--disable-accelerated-2d-canvas',
-        '--disable-dev-shm-usage',
-        '--disable-features=site-per-process',
-        '--window-size=1280,720'
-      ]
-    };
-  }
-
-  // Set executable path for non-Mac/Windows platforms
-  if (platform !== 'darwin' && platform !== 'win32') {
-    const executablePath = await chromium.executablePath();
-    launchOptions.executablePath = executablePath;
-  }
-
-  // console.log('browser options:', JSON.stringify(launchOptions, null, 2));
   try {
-    browser = await playwright.chromium.launch(launchOptions);
+    const executablePath = await getExecutablePath();
+    
+    const launchOptions = {
+      headless: true,
+      args: chromium.args,
+      executablePath: executablePath,
+      ignoreHTTPSErrors: true,
+      defaultViewport: chromium.defaultViewport,
+      ignoreDefaultArgs: ['--disable-extensions'],
+    };
+
+    const browser = await playwright.chromium.launch(launchOptions);
     console.log('Browser launched successfully');
-  } catch (err) {
-    console.error('Browser launch failed:', err.message);
-    throw err;
+    return browser;
+  } catch (error) {
+    console.error('Failed to launch browser:', error);
+    throw error;
   }
-  return browser;
 }
 
 async function closeBrowser(browser) {
+  if (!browser) return;
+  
   try {
-    if (!browser) {
-      console.warn('Browser instance is null or undefined. Nothing to close.');
-      return;
-    }
-
     await browser.close();
-    console.log('Browser closed.');
-
-    // Trigger cleanup of temporary directories
-    await cleanupResources();
-
+    console.log('Browser closed successfully');
   } catch (error) {
     console.error('Error closing browser:', error);
-    // Still try to clean up resources even if browser close fails
-    try {
-      await cleanupResources();
-    } catch (cleanupError) {
-      console.error('Error during resource cleanup:', cleanupError);
-    }
-    throw error;
   }
 }
 
 async function scroll(page, selector) {
   try {
-    await page.waitForSelector(selector, { timeout: 5000, state: 'attached' });
-    await page.evaluate(async(selector) => {
-      const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    await page.waitForSelector(selector, { timeout: 5000 });
+    await page.evaluate((selector) => {
       const element = document.querySelector(selector);
       if (element) {
-        for (let i = 0; i < element.scrollHeight; i += 100) {
-          element.scrollTo({ top: element.scrollHeight, behavior: 'smooth' }, i);
-          await delay(100 * (i/element.scrollHeight));
-        }
-      } else {
-        console.warn('Element not found:', selector);
+        element.scrollTo(0, element.scrollHeight);
       }
     }, selector);
   } catch (error) {
-    throw error;
+    console.error('Error during scroll:', error);
   }
 }
 
@@ -228,26 +148,21 @@ async function waitForScrollFeed(page, maxScroll = 10) {
 
 async function qs(page, selector) {
   try {
-    const element = await page.$(selector);
-    if (element) return element;
-    else {
-      console.warn(`Element not found: ${selector}`);
-      return null;
-    }
+    return await page.$(selector);
   } catch (error) {
-    throw error;
+    console.error('Error querying selector:', error);
+    return null;
   }
 }
 
 async function qsAll(page, selector) {
   try {
-    const elements = await page.$$(selector);
-    return elements;
+    return await page.$$(selector);
   } catch (error) {
-    throw error;
+    console.error('Error querying all selectors:', error);
+    return [];
   }
 }
-
 
 async function getClassName(page, className) {
   try {
@@ -261,7 +176,6 @@ async function getClassName(page, className) {
     throw error;
   }
 }
-
 
 async function click(page, selector) {
   try {
@@ -279,80 +193,61 @@ async function click(page, selector) {
 async function getText(page, selector) {
   try {
     const element = await page.$(selector);
-    if (element) {
-      const text = await element.textContent() ?? element.innerText();
-      return text.trim();
-    } else {
-      console.warn(`Element not found: ${selector}`);
-      return null;
-    }
+    if (!element) return null;
+    return await element.textContent();
   } catch (error) {
-    throw error;
+    console.error('Error getting text:', error);
+    return null;
   }
 }
 
 async function getHtml(page, selector) {
-    try {
-      const element = await page.$(selector);
-      if (element) {
-          const htmlContent = await element.innerHTML();
-          return htmlContent;
-      } else {
-          console.warn(`Element not found: ${selector}`);
-          return null;
-      }
-    } catch (error) {
-      console.error('Error getting content:', error);
-      throw error;
-    }
+  try {
+    const element = await page.$(selector);
+    if (!element) return null;
+    return await element.innerHTML();
+  } catch (error) {
+    console.error('Error getting HTML:', error);
+    return null;
+  }
 }
 
 async function waitSelector(page, selector, options = {}) {
   try {
-    const defaultOptions = { timeout: 5000, state: 'attached' }; // Default timeout 5 detik, state 'attached'
-    const mergedOptions = { ...defaultOptions, ...options };
-    await page.waitForSelector(selector, mergedOptions);
+    const defaultOptions = { timeout: 5000 };
+    await page.waitForSelector(selector, { ...defaultOptions, ...options });
     return true;
   } catch (error) {
-    if (error.message.includes('timeout')) {
-      return false;
-    }
-    throw error;
+    console.error('Error waiting for selector:', error);
+    return false;
   }
 }
-
 
 async function loadState(page, state = 'load', options = {}) {
   try {
-    const defaultOptions = { timeout: 30000 }; // Increase default timeout to 30 seconds
-    const mergedOptions = {...defaultOptions, ...options};
-    await page.waitForLoadState(state, mergedOptions);
+    const defaultOptions = { timeout: 10000 };
+    await page.waitForLoadState(state, { ...defaultOptions, ...options });
     return true;
   } catch (error) {
-    if (error.message.includes('timeout')) {
-      console.warn(`Timeout waiting for page state: ${state}. Continuing anyway.`);
-      return false;
-    }
-    throw error;
-  }
-}
-async function waitNetwork(page, options = {}) {
-  try {
-    const defaultOptions = { timeout: 5000, idleTime: 500 }; // Default timeout 5 detik, idleTime 500ms
-    const mergedOptions = { ...defaultOptions, ...options };
-    await page.waitForNetworkIdle(mergedOptions);
-    return true;
-  } catch (error) {
-    if (error.message.includes('timeout')) {
-      return false;
-    }
-    throw error;
+    console.error('Error waiting for load state:', error);
+    return false;
   }
 }
 
-async function rest(min = 1000, max = 2000){
-  const rand = Math.random() * (max - min) + min;
-  return new Promise((r) => setTimeout(r, rand))
+async function waitNetwork(page, options = {}) {
+  try {
+    const defaultOptions = { timeout: 5000, idleTime: 500 };
+    await page.waitForNetworkIdle({ ...defaultOptions, ...options });
+    return true;
+  } catch (error) {
+    console.error('Error waiting for network:', error);
+    return false;
+  }
+}
+
+async function rest(min = 1000, max = 2000) {
+  const delay = Math.floor(Math.random() * (max - min + 1)) + min;
+  return new Promise(resolve => setTimeout(resolve, delay));
 }
 
 async function run() {
@@ -388,9 +283,22 @@ async function run() {
   // Contoh penggunaan waitForNetworkIdle
   await waitNetwork(page, { idleTime: 1000 }); // Menunggu 1 detik sampai network idle
 
-
   await closeBrowser(browser);
 }
 
-
-export { openBrowser, closeBrowser, waitForScrollFeed, scroll, qs, qsAll, getClassName, getText, getHtml, waitSelector, waitNetwork, loadState, rest }
+export {
+  openBrowser,
+  closeBrowser,
+  waitForScrollFeed,
+  scroll,
+  qs,
+  qsAll,
+  getClassName,
+  click,
+  getText,
+  getHtml,
+  waitSelector,
+  loadState,
+  waitNetwork,
+  rest
+};

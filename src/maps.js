@@ -9,19 +9,8 @@ async function getData(url) {
   let page = null;
   
   try {
-    // Gunakan browser instance yang ada atau buat yang baru
     if (!browserInstance) {
-      browserInstance = await openBrowser({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--disable-gpu',
-          '--window-size=1280,720'
-        ]
-      });
+      browserInstance = await openBrowser();
     }
 
     ctx = await browserInstance.newContext({
@@ -30,15 +19,19 @@ async function getData(url) {
     });
 
     page = await ctx.newPage();
-    await page.goto(url, { waitUntil: 'networkidle' });
+    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
     await rest(2000, 3000);
 
     const results = [];
     let processedTitles = new Set();
 
     // Tunggu dan scroll hasil pencarian
-    await waitSelector(page, 'div[role="feed"]', { timeout: 10000 });
-    await scroll(page, 'div[role="feed"]');
+    const feedSelector = 'div[role="feed"]';
+    if (!await waitSelector(page, feedSelector, { timeout: 10000 })) {
+      throw new Error('Feed element not found');
+    }
+    
+    await scroll(page, feedSelector);
     await rest(1000, 2000);
 
     // Proses setiap card
@@ -56,54 +49,35 @@ async function getData(url) {
         await rest(1000, 2000);
         
         // Tunggu detail muncul
-        await waitSelector(page, 'div[role="dialog"]', { timeout: 5000 });
+        if (!await waitSelector(page, 'div[role="dialog"]', { timeout: 5000 })) {
+          console.error('Dialog not found for:', title);
+          continue;
+        }
         
-        // Ambil alamat
-        const address = await getText(page, 'button[data-item-id="address"]');
-        
-        // Ambil kontak
-        const contact = await getText(page, 'button[data-item-id="phone:tel:"]');
-        
-        // Ambil website jika ada
-        const website = await getText(page, 'a[data-item-id="authority"]');
-        
-        // Ambil jam operasional
-        const hours = await getText(page, 'div[data-item-id="oh"]');
-        
-        // Ambil rating
-        const rating = await getText(page, 'div[aria-label*="rating"]');
-        
-        // Ambil jumlah review
-        const reviews = await getText(page, 'div[aria-label*="reviews"]');
-        
-        // Ambil kategori
-        const category = await getText(page, 'button[jsaction*="category"]');
-        
-        // Ambil deskripsi
-        const description = await getText(page, 'div[data-item-id*="description"]');
+        // Ambil data
+        const data = {
+          title,
+          address: await getText(page, 'button[data-item-id="address"]'),
+          contact: await getText(page, 'button[data-item-id="phone:tel:"]'),
+          website: await getText(page, 'a[data-item-id="authority"]'),
+          hours: await getText(page, 'div[data-item-id="oh"]'),
+          rating: await getText(page, 'div[aria-label*="rating"]'),
+          reviews: await getText(page, 'div[aria-label*="reviews"]'),
+          category: await getText(page, 'button[jsaction*="category"]'),
+          description: await getText(page, 'div[data-item-id*="description"]'),
+          url: await page.url()
+        };
         
         // Ambil foto
         const photos = await qsAll(page, 'button[data-photo-index]');
-        const photoUrls = [];
+        data.photos = [];
         for (const photo of photos) {
           const style = await photo.getAttribute('style');
-          const match = style.match(/url\("([^"]+)"\)/);
-          if (match) photoUrls.push(match[1]);
+          const match = style?.match(/url\("([^"]+)"\)/);
+          if (match) data.photos.push(match[1]);
         }
         
-        results.push({
-          title,
-          address,
-          contact,
-          website,
-          hours,
-          rating,
-          reviews,
-          category,
-          description,
-          photos: photoUrls,
-          url: await page.url()
-        });
+        results.push(data);
         
         // Tutup dialog
         await page.keyboard.press('Escape');
@@ -115,31 +89,27 @@ async function getData(url) {
       }
     }
     
-    await setDB(results);
-    
-    // Cleanup
-    if (page) await page.close();
-    if (ctx) await ctx.close();
+    if (results.length > 0) {
+      await setDB(results);
+    }
     
     return results;
     
   } catch (error) {
-    // Cleanup on error
+    console.error('Error in getData:', error);
+    throw error;
+  } finally {
+    // Cleanup
     if (page) await page.close();
     if (ctx) await ctx.close();
-    if (browserInstance) {
-      await closeBrowser(browserInstance);
-      browserInstance = null;
-    }
-    throw error;
   }
 }
 
 async function getMultipleData(url) {
   try {
-    const results = await getData(url);
-    return results;
+    return await getData(url);
   } catch (error) {
+    console.error('Error in getMultipleData:', error);
     throw error;
   }
 }
