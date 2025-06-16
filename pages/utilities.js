@@ -1,4 +1,3 @@
-import postgres from 'postgres';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -6,8 +5,6 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const webpath =(df)=> path.join(__dirname, df);
-
-const sql = postgres(process.env.DATABASE_URL,  { ssl: 'verify-full' });
 
 function parseCSV(filePath) {
   const data = fs.readFileSync(filePath, 'utf-8');
@@ -83,4 +80,4 @@ async function saveAsCsv(data) {
   await fs.promises.writeFile(filePath, csvContent);
 }
 
-export { getPosition, saveAsCsv, save, load, webpath, sql };
+export { getPosition, saveAsCsv, save, load, webpath };
