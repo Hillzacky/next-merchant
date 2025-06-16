@@ -3,6 +3,8 @@ import { getDB, setDB } from './db.js';
 const { openBrowser, closeBrowser, waitForScrollFeed, scroll, qs, qsAll, getClassName, getText, getHtml, waitSelector, waitNetwork, loadState, rest } = browser;
 import { getPosition, saveAsCsv, save, load, webpath } from './utilities.js';
 
+let browserInstance = null;
+
 function buildUrl(find, area, myLongLat) {
         const url = 'https://www.google.com/maps/search'
         return url + '/' + encodeURI(find + area) + '/' + myLongLat
@@ -14,61 +16,74 @@ function endPoint(find, myLongLat) {
 }
 
 async function getData(url) {
-  const ob = await openBrowser();
-  const ctx = ob.newContext();
-  const page = await ob.newPage();
-  await page.goto(url, { timeout: 10000 });
-  // await loadState(page, 'networkidle');
-  let feed = await page.$('[role="feed"]', { timeout: 3500 })
-  // await waitNetwork(page, { idleTime: 1800 });
-  // await waitForScrollFeed(page, process.env.SET_SCROLL ?? 3);
-  let card = await feed.$$('.hfpxzc');
-  const processedTitles = new Set();
-  const results = [];
+  try {
+    if (!browserInstance) {
+      browserInstance = await openBrowser();
+    }
+    
+    const ctx = browserInstance.newContext();
+    const page = await browserInstance.newPage();
+    await page.goto(url, { timeout: 10000 });
+    // await loadState(page, 'networkidle');
+    let feed = await page.$('[role="feed"]', { timeout: 3500 })
+    // await waitNetwork(page, { idleTime: 1800 });
+    // await waitForScrollFeed(page, process.env.SET_SCROLL ?? 3);
+    let card = await feed.$$('.hfpxzc');
+    const processedTitles = new Set();
+    const results = [];
 
-  for (const c of card) {
-    try {
-      await c.click(); await rest(6000,9000);
-      const ov = 'div.bJzME.Hu9e2e.tTVLSc > div > div.e07Vkf.kA9KIf > div > div';
-      await waitSelector(page, ov, {timeout: 5000});
-      const overview = await page.$(ov);
+    for (const c of card) {
+      try {
+        await c.click(); 
+        await rest(6000,9000);
+        const ov = 'div.bJzME.Hu9e2e.tTVLSc > div > div.e07Vkf.kA9KIf > div > div';
+        await waitSelector(page, ov, {timeout: 5000});
+        const overview = await page.$(ov);
 
-      if (overview) {
-        const titleElement = await overview.$("h1");
-        const title = titleElement ? await titleElement.textContent() : "No title";
+        if (overview) {
+          const titleElement = await overview.$("h1");
+          const title = titleElement ? await titleElement.textContent() : "No title";
 
-        if (processedTitles.has(title)) continue;
-        processedTitles.add(title);
+          if (processedTitles.has(title)) continue;
+          processedTitles.add(title);
 
-              const ie = await overview.$$("button[data-item-id]");
-        const alamat = await ie[0].getAttribute('aria-label')
-              const kontak = async (ar)=>{
-          let kontak = "";
-          for (let btn of ar) {
-            const itemId = await btn.getAttribute("data-item-id");
-            if (itemId && itemId.includes(":")) {
-              const parts = itemId.split(":");
-              if (parts.length > 2) {
-                kontak = parts[2];
-                break;
+          const ie = await overview.$$("button[data-item-id]");
+          const alamat = await ie[0].getAttribute('aria-label')
+          const kontak = async (ar)=>{
+            let kontak = "";
+            for (let btn of ar) {
+              const itemId = await btn.getAttribute("data-item-id");
+              if (itemId && itemId.includes(":")) {
+                const parts = itemId.split(":");
+                if (parts.length > 2) {
+                  kontak = parts[2];
+                  break;
+                }
               }
             }
+            return kontak.replace("-", "");
           }
-          return kontak.replace("-", "");
-              }
-        const addr = alamat && alamat.length > 0 ? alamat.split(":")[1].trim() : "No address";
-        const phone = await kontak(ie);
-        results.push({ name: title, address: addr, phone });
-        console.log(`Processed: ${title}`);
+          const addr = alamat && alamat.length > 0 ? alamat.split(":")[1].trim() : "No address";
+          const phone = await kontak(ie);
+          results.push({ name: title, address: addr, phone });
+        }
+      } catch (error) {
+        throw new Error(`Error processing card: ${error.message}`);
       }
-    } catch (error) {
-      console.error("Error processing card:", error);
     }
+    
+    await setDB(results);
+    await page.close();
+    await ctx.close();
+    
+    return results;
+  } catch (error) {
+    if (browserInstance) {
+      await closeBrowser(browserInstance);
+      browserInstance = null;
+    }
+    throw error;
   }
-  await setDB(results);
-  // await save(results);
-  // await saveAsCsv(results);
-  await closeBrowser(ob);
 }
 
 function viewResult(results) {
@@ -81,14 +96,25 @@ function viewResult(results) {
 }
 
 async function getMultipleData(find) {
-  const file = webpath('kecamatan_sukabumi.csv');
-  const dataList = getPosition(file);
-  for(let i=0;i < dataList.length; i++){
-    const uri = endPoint(find, dataList[i].myLongLat);
-    console.info('Processing: ' + uri)
-    await getData(uri)
+  try {
+    const file = webpath('kecamatan_sukabumi.csv');
+    const dataList = getPosition(file);
+    const results = [];
+    
+    for(let i=0; i < dataList.length; i++) {
+      const uri = endPoint(find, dataList[i].myLongLat);
+      const data = await getData(uri);
+      results.push(...data);
+    }
+    
+    return results;
+  } catch (error) {
+    if (browserInstance) {
+      await closeBrowser(browserInstance);
+      browserInstance = null;
+    }
+    throw error;
   }
-  console.info("working complete.")
 }
 
 export { endPoint, buildUrl, getData, getMultipleData }
