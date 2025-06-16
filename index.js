@@ -1,4 +1,13 @@
+const express = require('express');
+const app = express();
+const port = process.env.PORT || 3000;
 
-import Home from './pages/index.js';
+app.use(express.json());
 
-Home();
+app.use('/api', require('./pages/api'));
+
+app.listen(port, () => {
+  console.log(`Server listening on port ${port}`);
+});
+
+module.exports = app;
