@@ -1,25 +1,12 @@
 import express from 'express';
 const router = express.Router();
-import fetch from 'node-fetch';
+import { getMultipleData } from '../maps.js';
 
-router.get('/bulk', async (req, res) => {
-    const { API_KEY, CONNECTION_STRING } = process.env;
+router.get('/:search', async (req, res) => {
+    const { search } = req.params;
     try {
-        const response = await fetch(NEON_CONNECTION_STRING, {
-            method: 'GET',
-            headers: {
-                Authorization: `Bearer ${API_KEY}`,
-                'Content-Type': 'application/json',
-            },
-        });
-
-        if (!response.ok) {
-            const message = `HTTP error ${response.status} - ${await response.text()}`;
-            throw new Error(message);
-        }
-
-        const data = await response.json();
-        res.json(data);
+        getMultipleData(search);
+        res.json({"status": "complete"});
     } catch (error) {
         console.error('Error fetching bulk data:', error);
         res.status(500).json({ error: 'Failed to fetch data' });

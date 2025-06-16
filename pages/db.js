@@ -14,7 +14,7 @@ async function up() {
   return m
 }
 
-async function getData(phone = null) {
+async function getDB(phone = null) {
   const m = await sql`
     select
       id,
@@ -27,7 +27,7 @@ async function getData(phone = null) {
   return m
 }
 
-async function setData({ name, address, phone }) {
+async function setDB({ name, address, phone }) {
   const m = await sql`
     insert into merchant
       (name, address, phone)
@@ -38,4 +38,4 @@ async function setData({ name, address, phone }) {
   return m
 }
 
-export { up, getData, setData }
+export { up, getDB, setDB }

@@ -66,8 +66,8 @@ async function getData(url) {
     }
   }
   await setDB(results);
-  await save(results);
-  await saveAsCsv(results);
+  // await save(results);
+  // await saveAsCsv(results);
   await closeBrowser(ob);
 }
 
@@ -88,7 +88,7 @@ async function getMultipleData(find) {
     console.info('Processing: ' + uri)
     await getData(uri)
   }
-  console.info("worrking complete.")
+  console.info("working complete.")
 }
 
 module.exports = { endPoint, buildUrl, getData, getMultipleData }
