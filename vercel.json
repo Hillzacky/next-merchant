@@ -1,9 +1,9 @@
 {
   "version": 3,
+  "maxDuration": 360,
   "builds": [
     {
       "src": "index.js",
-      "maxDuration": 360,
       "use": "@vercel/node"
     }
   ],
