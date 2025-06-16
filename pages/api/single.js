@@ -25,16 +25,35 @@ export default async function handler(req, res) {
     const uri = `https://www.google.com/maps/search/${encodeURI(find)}/${mylonglat}`;
     
     // Start processing in background
-    res.status(200).json({ status: 'success', message: 'Data processing started' });
+    res.status(200).json({ 
+      status: 'success', 
+      message: 'Data processing started',
+      data: {
+        find,
+        mylonglat,
+        uri
+      }
+    });
     
     // Process data after sending response
     try {
       await getData(uri);
     } catch (error) {
-      console.error('Error processing data:', error);
+      // Error hanya disimpan di response, tidak di console
+      res.status(500).json({ 
+        status: 'error',
+        message: error.message,
+        data: {
+          find,
+          mylonglat,
+          uri
+        }
+      });
     }
   } catch (error) {
-    console.error('Error in single handler:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      status: 'error',
+      message: error.message
+    });
   }
 } 

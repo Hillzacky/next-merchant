@@ -21,19 +21,36 @@ export default async function handler(req, res) {
       res.status(400).json({ error: 'Find parameter is required' });
       return;
     }
-    
+
     // Start processing in background
-    res.status(200).json({ status: 'success', message: 'Bulk data processing started' });
+    res.status(200).json({ 
+      status: 'success', 
+      message: 'Bulk data processing started',
+      data: {
+        find,
+        uri: encodeURI(find)
+      }
+    });
     
     // Process data after sending response
     try {
-      const uri = encodeURI(find)
+      const uri = encodeURI(find);
       await getMultipleData(uri);
     } catch (error) {
-      console.error('Error processing data:', error);
+      // Error hanya disimpan di response, tidak di console
+      res.status(500).json({ 
+        status: 'error',
+        message: error.message,
+        data: {
+          find,
+          uri: encodeURI(find)
+        }
+      });
     }
   } catch (error) {
-    console.error('Error in bulk handler:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      status: 'error',
+      message: error.message
+    });
   }
 } 
