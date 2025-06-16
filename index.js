@@ -12,14 +12,6 @@ export default function handler(req, res) {
 
   const routes = {
     "Available Routes": {
-      "/": {
-        "description": "Root endpoint - redirects to /api/single",
-        "methods": ["GET", "POST", "OPTIONS"],
-        "query_params": {
-          "find": "required",
-          "mylonglat": "required"
-        }
-      },
       "/api/init-db": {
         "description": "Initialize database",
         "methods": ["GET", "POST", "OPTIONS"]

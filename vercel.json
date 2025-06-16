@@ -16,6 +16,14 @@
       "dest": "/index.js"
     },
     {
+      "src": "/api/bulk/(.*)",
+      "dest": "/api/bulk"
+    },
+    {
+      "src": "/api/single/(.*)",
+      "dest": "/api/single"
+    },
+    {
       "src": "/api/(.*)",
       "dest": "/api/$1"
     }
