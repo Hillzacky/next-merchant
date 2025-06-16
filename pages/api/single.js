@@ -1,5 +1,7 @@
 import { getData } from '../../src/maps.js';
 
+let browser = null;
+
 export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -21,8 +23,16 @@ export default async function handler(req, res) {
     }
 
     const uri = `https://www.google.com/maps/search/${encodeURI(find)}/${mylonglat}`;
-    await getData(uri);
+    
+    // Start processing in background
     res.status(200).json({ status: 'success', message: 'Data processing started' });
+    
+    // Process data after sending response
+    try {
+      await getData(uri);
+    } catch (error) {
+      console.error('Error processing data:', error);
+    }
   } catch (error) {
     console.error('Error in single handler:', error);
     res.status(500).json({ error: error.message });

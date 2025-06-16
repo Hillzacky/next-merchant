@@ -1,5 +1,7 @@
 import { getMultipleData } from '../../src/maps.js';
 
+let browser = null;
+
 export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -13,16 +15,23 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { find, mylonglat = '@-6.9351394,106.9323303,13z' } = req.query;
+    const { find } = req.query;
 
     if (!find) {
       res.status(400).json({ error: 'Find parameter is required' });
       return;
     }
-
-    const uri = `https://www.google.com/maps/search/${encodeURI(find)}/${mylonglat}`;
-    await getMultipleData(uri);
+    
+    // Start processing in background
     res.status(200).json({ status: 'success', message: 'Bulk data processing started' });
+    
+    // Process data after sending response
+    try {
+      const uri = encodeURI(find)
+      await getMultipleData(uri);
+    } catch (error) {
+      console.error('Error processing data:', error);
+    }
   } catch (error) {
     console.error('Error in bulk handler:', error);
     res.status(500).json({ error: error.message });
