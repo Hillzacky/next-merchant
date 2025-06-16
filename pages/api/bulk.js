@@ -22,28 +22,25 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Start processing in background
-    res.status(200).json({ 
-      status: 'success', 
-      message: 'Bulk data processing started',
-      data: {
-        find,
-        uri: encodeURI(find)
-      }
-    });
+    const uri = encodeURI(find);
     
-    // Process data after sending response
     try {
-      const uri = encodeURI(find);
       await getMultipleData(uri);
+      res.status(200).json({ 
+        status: 'success', 
+        message: 'Bulk data processing completed',
+        data: {
+          find,
+          uri
+        }
+      });
     } catch (error) {
-      // Error hanya disimpan di response, tidak di console
       res.status(500).json({ 
         status: 'error',
         message: error.message,
         data: {
           find,
-          uri: encodeURI(find)
+          uri
         }
       });
     }
