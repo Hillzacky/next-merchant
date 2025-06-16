@@ -8,16 +8,8 @@
   ],
   "routes": [
     {
-      "src": "/api/bulk/(.*)",
-      "dest": "/pages/api/bulk.js"
-    },
-    {
-      "src": "/api/single/(.*)",
-      "dest": "/pages/api/single.js"
-    },
-    {
-      "src": "/api/init-db",
-      "dest": "/pages/api/init-db.js"
+      "src": "/api/(.*)",
+      "dest": "/pages/api/api.js"
     }
   ]
 }
