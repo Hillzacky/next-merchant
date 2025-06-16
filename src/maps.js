@@ -1,83 +1,132 @@
-import * as browser from './browser.js';
-import { getDB, setDB } from './db.js';
-const { openBrowser, closeBrowser, waitForScrollFeed, scroll, qs, qsAll, getClassName, getText, getHtml, waitSelector, waitNetwork, loadState, rest } = browser;
-import { getPosition, saveAsCsv, save, load, webpath } from './utilities.js';
+import { openBrowser, closeBrowser, scroll, qs, qsAll, getText, getHtml, waitSelector, loadState, waitNetwork, rest } from './browser.js';
+import { setDB } from './db.js';
+import { buildUrl, endPoint } from './utilities.js';
 
 let browserInstance = null;
 
-function buildUrl(find, area, myLongLat) {
-        const url = 'https://www.google.com/maps/search'
-        return url + '/' + encodeURI(find + area) + '/' + myLongLat
-}
-
-function endPoint(find, myLongLat) {
-        const url = 'https://www.google.com/maps/search'
-        return url + '/' + encodeURI(find) + '/' + myLongLat
-}
-
 async function getData(url) {
+  let ctx = null;
+  let page = null;
+  
   try {
+    // Gunakan browser instance yang ada atau buat yang baru
     if (!browserInstance) {
-      browserInstance = await openBrowser();
+      browserInstance = await openBrowser({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--disable-gpu',
+          '--window-size=1280,720'
+        ]
+      });
     }
-    
-    const ctx = browserInstance.newContext();
-    const page = await browserInstance.newPage();
-    await page.goto(url, { timeout: 10000 });
-    // await loadState(page, 'networkidle');
-    let feed = await page.$('[role="feed"]', { timeout: 3500 })
-    // await waitNetwork(page, { idleTime: 1800 });
-    // await waitForScrollFeed(page, process.env.SET_SCROLL ?? 3);
-    let card = await feed.$$('.hfpxzc');
-    const processedTitles = new Set();
+
+    ctx = await browserInstance.newContext({
+      viewport: { width: 1280, height: 720 },
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    });
+
+    page = await ctx.newPage();
+    await page.goto(url, { waitUntil: 'networkidle' });
+    await rest(2000, 3000);
+
     const results = [];
+    let processedTitles = new Set();
 
-    for (const c of card) {
+    // Tunggu dan scroll hasil pencarian
+    await waitSelector(page, 'div[role="feed"]', { timeout: 10000 });
+    await scroll(page, 'div[role="feed"]');
+    await rest(1000, 2000);
+
+    // Proses setiap card
+    const cards = await qsAll(page, 'div[role="article"]');
+    
+    for (const card of cards) {
       try {
-        await c.click(); 
-        await rest(6000,9000);
-        const ov = 'div.bJzME.Hu9e2e.tTVLSc > div > div.e07Vkf.kA9KIf > div > div';
-        await waitSelector(page, ov, {timeout: 5000});
-        const overview = await page.$(ov);
-
-        if (overview) {
-          const titleElement = await overview.$("h1");
-          const title = titleElement ? await titleElement.textContent() : "No title";
-
-          if (processedTitles.has(title)) continue;
-          processedTitles.add(title);
-
-          const ie = await overview.$$("button[data-item-id]");
-          const alamat = await ie[0].getAttribute('aria-label')
-          const kontak = async (ar)=>{
-            let kontak = "";
-            for (let btn of ar) {
-              const itemId = await btn.getAttribute("data-item-id");
-              if (itemId && itemId.includes(":")) {
-                const parts = itemId.split(":");
-                if (parts.length > 2) {
-                  kontak = parts[2];
-                  break;
-                }
-              }
-            }
-            return kontak.replace("-", "");
-          }
-          const addr = alamat && alamat.length > 0 ? alamat.split(":")[1].trim() : "No address";
-          const phone = await kontak(ie);
-          results.push({ name: title, address: addr, phone });
+        const title = await getText(card, 'div[role="heading"]');
+        if (!title || processedTitles.has(title)) continue;
+        
+        processedTitles.add(title);
+        
+        // Klik card untuk membuka detail
+        await card.click();
+        await rest(1000, 2000);
+        
+        // Tunggu detail muncul
+        await waitSelector(page, 'div[role="dialog"]', { timeout: 5000 });
+        
+        // Ambil alamat
+        const address = await getText(page, 'button[data-item-id="address"]');
+        
+        // Ambil kontak
+        const contact = await getText(page, 'button[data-item-id="phone:tel:"]');
+        
+        // Ambil website jika ada
+        const website = await getText(page, 'a[data-item-id="authority"]');
+        
+        // Ambil jam operasional
+        const hours = await getText(page, 'div[data-item-id="oh"]');
+        
+        // Ambil rating
+        const rating = await getText(page, 'div[aria-label*="rating"]');
+        
+        // Ambil jumlah review
+        const reviews = await getText(page, 'div[aria-label*="reviews"]');
+        
+        // Ambil kategori
+        const category = await getText(page, 'button[jsaction*="category"]');
+        
+        // Ambil deskripsi
+        const description = await getText(page, 'div[data-item-id*="description"]');
+        
+        // Ambil foto
+        const photos = await qsAll(page, 'button[data-photo-index]');
+        const photoUrls = [];
+        for (const photo of photos) {
+          const style = await photo.getAttribute('style');
+          const match = style.match(/url\("([^"]+)"\)/);
+          if (match) photoUrls.push(match[1]);
         }
+        
+        results.push({
+          title,
+          address,
+          contact,
+          website,
+          hours,
+          rating,
+          reviews,
+          category,
+          description,
+          photos: photoUrls,
+          url: await page.url()
+        });
+        
+        // Tutup dialog
+        await page.keyboard.press('Escape');
+        await rest(500, 1000);
+        
       } catch (error) {
-        throw new Error(`Error processing card: ${error.message}`);
+        console.error(`Error processing card: ${error.message}`);
+        continue;
       }
     }
     
     await setDB(results);
-    await page.close();
-    await ctx.close();
+    
+    // Cleanup
+    if (page) await page.close();
+    if (ctx) await ctx.close();
     
     return results;
+    
   } catch (error) {
+    // Cleanup on error
+    if (page) await page.close();
+    if (ctx) await ctx.close();
     if (browserInstance) {
       await closeBrowser(browserInstance);
       browserInstance = null;
@@ -86,35 +135,13 @@ async function getData(url) {
   }
 }
 
-function viewResult(results) {
-  console.log('\nHasil Akhir:');
-  results.forEach((item, index) => {
-    console.log(`\n${index + 1}. ${item.name}`);
-    console.log(`   Alamat: ${item.address}`);
-    console.log(`   Telepon: ${item.phone}`);
-  }); 
-}
-
-async function getMultipleData(find) {
+async function getMultipleData(url) {
   try {
-    const file = webpath('kecamatan_sukabumi.csv');
-    const dataList = getPosition(file);
-    const results = [];
-    
-    for(let i=0; i < dataList.length; i++) {
-      const uri = endPoint(find, dataList[i].myLongLat);
-      const data = await getData(uri);
-      results.push(...data);
-    }
-    
+    const results = await getData(url);
     return results;
   } catch (error) {
-    if (browserInstance) {
-      await closeBrowser(browserInstance);
-      browserInstance = null;
-    }
     throw error;
   }
 }
 
-export { endPoint, buildUrl, getData, getMultipleData }
+export { getData, getMultipleData };

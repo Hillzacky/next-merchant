@@ -25,12 +25,6 @@ async function cleanupResources() {
       console.error(`Failed to remove directory ${dir}:`, error);
     }
   }
-
-  try {
-    await chromium.executablePath();
-  } catch (error) {
-    console.error('Error during cleanup:', error);
-  }
 }
 
 // Register cleanup handlers
@@ -69,11 +63,7 @@ async function openBrowser(options = {}) {
     headless: options.headless ?? true,
     args: [
       '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--disable-gpu',
-      '--window-size=1280,720'
+      '--disable-setuid-sandbox'
     ],
     ignoreDefaultArgs: false
   };
@@ -138,8 +128,8 @@ async function openBrowser(options = {}) {
     };
   }
 
-  // Set executable path for non-Mac/Windows platforms
-  if (platform !== 'darwin' && platform !== 'win32') {
+  // Jika ada opsi executablePath dari sparticuz/chromium, tambahkan
+  if (!isMac && !isWin) {
     const executablePath = await chromium.executablePath();
     launchOptions.executablePath = executablePath;
   }
@@ -182,7 +172,7 @@ async function closeBrowser(browser) {
 
 async function scroll(page, selector) {
   try {
-    await page.waitForSelector(selector, { timeout: 5000, state: 'attached' });
+    await page.waitForSelector(selector, { timeout: 2800, state: 'attached' });
     await page.evaluate(async(selector) => {
       const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       const element = document.querySelector(selector);
@@ -350,7 +340,7 @@ async function waitNetwork(page, options = {}) {
   }
 }
 
-async function rest(min = 1000, max = 2000){
+async function rest(min = 5000, max = 10000){
   const rand = Math.random() * (max - min) + min;
   return new Promise((r) => setTimeout(r, rand))
 }
