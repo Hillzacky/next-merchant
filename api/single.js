@@ -1,0 +1,30 @@
+import { getData } from '../src/maps.js';
+
+export default async function handler(req, res) {
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
+  try {
+    const { find = 'toko', mylonglat = '@-6.9351394,106.9323303,13z' } = req.query;
+
+    if (!mylonglat) {
+      res.status(400).json({ error: 'Coordinate parameter is required' });
+      return;
+    }
+
+    const uri = `https://www.google.com/maps/search/${encodeURI(find)}/${mylonglat}`;
+    await getData(uri);
+    res.status(200).json({ status: 'success', message: 'Data processing started' });
+  } catch (error) {
+    console.error('Error in single handler:', error);
+    res.status(500).json({ error: error.message });
+  }
+} 
