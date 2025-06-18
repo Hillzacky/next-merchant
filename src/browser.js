@@ -1,5 +1,5 @@
 import chromium from "@sparticuz/chromium-min";
-import playwright from "playwright-core";
+import chromium as playwright from "playwright-core";
 import fs from 'node:fs/promises';
 import * as fsSync from 'node:fs';
 import os from 'os';
