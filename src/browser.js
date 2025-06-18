@@ -59,8 +59,10 @@ process.on('uncaughtException', async (error) => {
 async function openBrowser(options = {}) {
   const platform = process.platform;
   let browser;
+  let exp = true ? await chromium.executablePath('https://github.com/Sparticuz/chromium/releases/download/v137.0.1/chromium-v137.0.1-pack.x64.tar') : chromium.executablePath();
   let launchOptions = {
     headless: options.headless ?? true,
+    executablePath: exp
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox'
