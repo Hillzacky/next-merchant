@@ -1,0 +1,304 @@
+import chromium from "@sparticuz/chromium-min";
+import playwright from "playwright-core";
+import fs from 'node:fs/promises';
+import * as fsSync from 'node:fs';
+import os from 'os';
+import path from 'path';
+import { EventEmitter } from 'events';
+
+// Set higher limit for EventEmitter to prevent memory warnings
+EventEmitter.defaultMaxListeners = 30;
+
+// Keep track of temp directories to clean up on exit
+const tempDirectories = [];
+
+// Konfigurasi untuk Vercel
+const isDev = process.env.NODE_ENV === 'development';
+
+// Fungsi untuk mendapatkan executable path
+async function getExecutablePath() {
+  if (isDev) {
+    return null; // Gunakan Chrome lokal saat development
+  }
+  return await chromium.executablePath();
+}
+
+// Clean up function for handling exit
+async function cleanupResources() {
+  console.log('Cleaning up resources...');
+
+  // Clean up temporary directories
+  for (const dir of tempDirectories) {
+    try {
+      await fs.rm(dir, { recursive: true, force: true });
+      console.log(`Removed temporary directory: ${dir}`);
+    } catch (error) {
+      console.error(`Failed to remove directory ${dir}:`, error);
+    }
+  }
+
+  try {
+    await chromium.executablePath();
+  } catch (error) {
+    console.error('Error during cleanup:', error);
+  }
+}
+
+// Register cleanup handlers
+process.on('exit', () => {
+  console.log('Process exit detected, cleaning up...');
+  // Use sync operations since we're in exit handler
+  for (const dir of tempDirectories) {
+    try {
+      fsSync.rmSync(dir, { recursive: true, force: true });
+    } catch (error) {
+      console.error(`Failed to remove directory ${dir} during exit:`, error);
+    }
+  }
+});
+
+// Handle other termination signals
+['SIGINT', 'SIGTERM', 'SIGQUIT'].forEach(signal => {
+  process.on(signal, async () => {
+    console.log(`Received ${signal}, cleaning up before exit...`);
+    await cleanupResources();
+    process.exit(0);
+  });
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', async (error) => {
+  console.error('Uncaught exception:', error);
+  await cleanupResources();
+  process.exit(1);
+});
+
+async function openBrowser(options = {}) {
+  try {
+    const executablePath = await getExecutablePath();
+    
+    const launchOptions = {
+      headless: true,
+      args: chromium.args,
+      executablePath: executablePath,
+      ignoreHTTPSErrors: true,
+      defaultViewport: chromium.defaultViewport,
+      ignoreDefaultArgs: ['--disable-extensions'],
+    };
+
+    const browser = await playwright.chromium.launch(launchOptions);
+    console.log('Browser launched successfully');
+    return browser;
+  } catch (error) {
+    console.error('Failed to launch browser:', error);
+    throw error;
+  }
+}
+
+async function closeBrowser(browser) {
+  if (!browser) return;
+  
+  try {
+    await browser.close();
+    console.log('Browser closed successfully');
+  } catch (error) {
+    console.error('Error closing browser:', error);
+  }
+}
+
+async function scroll(page, selector) {
+  try {
+    await page.waitForSelector(selector, { timeout: 5000 });
+    await page.evaluate((selector) => {
+      const element = document.querySelector(selector);
+      if (element) {
+        element.scrollTo(0, element.scrollHeight);
+      }
+    }, selector);
+  } catch (error) {
+    console.error('Error during scroll:', error);
+  }
+}
+
+async function waitForScrollFeed(page, maxScroll = 10) {
+  let previousHeight;
+  let currentHeight = 0;
+  const maxScrollAttempts = maxScroll; // Batasi jumlah scroll
+  let attemptCount = 0;
+
+  while (previousHeight !== currentHeight && attemptCount < maxScrollAttempts) {
+    previousHeight = currentHeight;
+
+    // Scroll ke bawah
+    await scroll(page, "[role='feed']");
+
+    // Tunggu content baru dimuat
+    await page.waitForTimeout(2500 * (attemptCount + 1 / 2));
+
+    // Dapatkan tinggi baru
+    currentHeight = await page.evaluate(() => {
+      const feed = document.querySelector("[role='feed']");
+      return feed ? feed.scrollHeight : 0;
+    });
+
+    console.log(`Scroll attempt ${attemptCount + 1}: Previous height = ${previousHeight}, Current height = ${currentHeight}`);
+    attemptCount++;
+  }
+}
+
+async function qs(page, selector) {
+  try {
+    return await page.$(selector);
+  } catch (error) {
+    console.error('Error querying selector:', error);
+    return null;
+  }
+}
+
+async function qsAll(page, selector) {
+  try {
+    return await page.$$(selector);
+  } catch (error) {
+    console.error('Error querying all selectors:', error);
+    return [];
+  }
+}
+
+async function getClassName(page, className) {
+  try {
+    const elements = await page.$$(`.${className}`);
+    if (elements.length > 0) return elements;
+    else {
+      console.warn(`Element not found: .${className}`);
+      return null;
+    }
+  } catch (error) {
+    throw error;
+  }
+}
+
+async function click(page, selector) {
+  try {
+    const element = await page.$(selector);
+    if (element) {
+      await element.click();
+    } else {
+      console.warn(`Element not found: ${selector}`);
+    }
+  } catch (error) {
+    throw error;
+  }
+}
+
+async function getText(page, selector) {
+  try {
+    const element = await page.$(selector);
+    if (!element) return null;
+    return await element.textContent();
+  } catch (error) {
+    console.error('Error getting text:', error);
+    return null;
+  }
+}
+
+async function getHtml(page, selector) {
+  try {
+    const element = await page.$(selector);
+    if (!element) return null;
+    return await element.innerHTML();
+  } catch (error) {
+    console.error('Error getting HTML:', error);
+    return null;
+  }
+}
+
+async function waitSelector(page, selector, options = {}) {
+  try {
+    const defaultOptions = { timeout: 5000 };
+    await page.waitForSelector(selector, { ...defaultOptions, ...options });
+    return true;
+  } catch (error) {
+    console.error('Error waiting for selector:', error);
+    return false;
+  }
+}
+
+async function loadState(page, state = 'load', options = {}) {
+  try {
+    const defaultOptions = { timeout: 10000 };
+    await page.waitForLoadState(state, { ...defaultOptions, ...options });
+    return true;
+  } catch (error) {
+    console.error('Error waiting for load state:', error);
+    return false;
+  }
+}
+
+async function waitNetwork(page, options = {}) {
+  try {
+    const defaultOptions = { timeout: 5000, idleTime: 500 };
+    await page.waitForNetworkIdle({ ...defaultOptions, ...options });
+    return true;
+  } catch (error) {
+    console.error('Error waiting for network:', error);
+    return false;
+  }
+}
+
+async function rest(min = 1000, max = 2000) {
+  const delay = Math.floor(Math.random() * (max - min + 1)) + min;
+  return new Promise(resolve => setTimeout(resolve, delay));
+}
+
+async function run() {
+  const browser = await openBrowser();
+  const page = await browser.newPage();
+  await page.goto('https://www.example.com');
+
+  const titleElement = await qs(page, 'title');
+  console.log('Title:', titleElement ? await titleElement.textContent() : "Title not found");
+
+  const links = await qsAll(page, 'a');
+  console.log('Number of links:', links.length);
+
+  const paragraphElements = await getClassName(page, 'paragraph');
+  console.log("Number of paragraph elements:", paragraphElements ? paragraphElements.length : "Paragraph elements not found");
+
+  await click(page, '#myButton');
+
+  const innerText = await getText(page, '.my-class');
+  console.log('Inner text:', innerText);
+
+  const content = await getHtml(page, '#myDiv');
+  console.log('Content:', content);
+
+  // Contoh penggunaan waitForSelector
+  await waitSelector(page, '#myElement', {timeout: 10000}); // Menunggu sampai 10 detik
+  const elementText = await getText(page, '#myElement');
+  console.log("Text from #myElement:", elementText);
+
+  // Contoh penggunaan waitForLoadState
+  await loadState(page, 'networkidle'); // Menunggu sampai network idle
+
+  // Contoh penggunaan waitForNetworkIdle
+  await waitNetwork(page, { idleTime: 1000 }); // Menunggu 1 detik sampai network idle
+
+  await closeBrowser(browser);
+}
+
+export {
+  openBrowser,
+  closeBrowser,
+  waitForScrollFeed,
+  scroll,
+  qs,
+  qsAll,
+  getClassName,
+  click,
+  getText,
+  getHtml,
+  waitSelector,
+  loadState,
+  waitNetwork,
+  rest
+};

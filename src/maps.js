@@ -1,117 +1,120 @@
-import { openBrowser, closeBrowser, scroll, qs, qsAll, getText, getHtml, waitSelector, loadState, waitNetwork, rest } from './browser.js';
-import { setDB } from './db.js';
-import { buildUrl, endPoint } from './utilities.js';
+import * as browser from './browser.js';
+import { getDB, setDB } from './db.js';
+const { openBrowser, closeBrowser, waitForScrollFeed, scroll, qs, qsAll, getClassName, getText, getHtml, waitSelector, waitNetwork, loadState, rest } = browser;
+import { getPosition, saveAsCsv, save, load, webpath } from './utilities.js';
 
 let browserInstance = null;
 
+function buildUrl(find, area, myLongLat) {
+        const url = 'https://www.google.com/maps/search'
+        return url + '/' + encodeURI(find + area) + '/' + myLongLat
+}
+
+function endPoint(find, myLongLat) {
+        const url = 'https://www.google.com/maps/search'
+        return url + '/' + encodeURI(find) + '/' + myLongLat
+}
+
 async function getData(url) {
-  let ctx = null;
-  let page = null;
-  
   try {
     if (!browserInstance) {
       browserInstance = await openBrowser();
     }
-
-    ctx = await browserInstance.newContext({
-      viewport: { width: 1280, height: 720 },
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    });
-
-    page = await ctx.newPage();
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
-    await rest(2000, 3000);
-
+    
+    const ctx = browserInstance.newContext();
+    const page = await browserInstance.newPage();
+    await page.goto(url, { timeout: 10000 });
+    // await loadState(page, 'networkidle');
+    let feed = await page.$('[role="feed"]', { timeout: 3500 })
+    // await waitNetwork(page, { idleTime: 1800 });
+    // await waitForScrollFeed(page, process.env.SET_SCROLL ?? 3);
+    let card = await feed.$$('.hfpxzc');
+    const processedTitles = new Set();
     const results = [];
-    let processedTitles = new Set();
 
-    // Tunggu dan scroll hasil pencarian
-    const feedSelector = 'div[role="feed"]';
-    if (!await waitSelector(page, feedSelector, { timeout: 10000 })) {
-      throw new Error('Feed element not found');
-    }
-    
-    await scroll(page, feedSelector);
-    await rest(1000, 2000);
-
-    // Proses setiap card
-    const cards = await qsAll(page, 'div[role="article"]');
-    
-    for (const card of cards) {
+    for (const c of card) {
       try {
-        const title = await getText(card, 'div[role="heading"]');
-        if (!title || processedTitles.has(title)) continue;
-        
-        processedTitles.add(title);
-        
-        // Klik card untuk membuka detail
-        await card.click();
-        await rest(1000, 2000);
-        
-        // Tunggu detail muncul
-        if (!await waitSelector(page, 'div[role="dialog"]', { timeout: 5000 })) {
-          console.error('Dialog not found for:', title);
-          continue;
+        await c.click(); 
+        await rest(6000,9000);
+        const ov = 'div.bJzME.Hu9e2e.tTVLSc > div > div.e07Vkf.kA9KIf > div > div';
+        await waitSelector(page, ov, {timeout: 5000});
+        const overview = await page.$(ov);
+
+        if (overview) {
+          const titleElement = await overview.$("h1");
+          const title = titleElement ? await titleElement.textContent() : "No title";
+
+          if (processedTitles.has(title)) continue;
+          processedTitles.add(title);
+
+          const ie = await overview.$$("button[data-item-id]");
+          const alamat = await ie[0].getAttribute('aria-label')
+          const kontak = async (ar)=>{
+            let kontak = "";
+            for (let btn of ar) {
+              const itemId = await btn.getAttribute("data-item-id");
+              if (itemId && itemId.includes(":")) {
+                const parts = itemId.split(":");
+                if (parts.length > 2) {
+                  kontak = parts[2];
+                  break;
+                }
+              }
+            }
+            return kontak.replace("-", "");
+          }
+          const addr = alamat && alamat.length > 0 ? alamat.split(":")[1].trim() : "No address";
+          const phone = await kontak(ie);
+          results.push({ name: title, address: addr, phone });
         }
-        
-        // Ambil data
-        const data = {
-          title,
-          address: await getText(page, 'button[data-item-id="address"]'),
-          contact: await getText(page, 'button[data-item-id="phone:tel:"]'),
-          website: await getText(page, 'a[data-item-id="authority"]'),
-          hours: await getText(page, 'div[data-item-id="oh"]'),
-          rating: await getText(page, 'div[aria-label*="rating"]'),
-          reviews: await getText(page, 'div[aria-label*="reviews"]'),
-          category: await getText(page, 'button[jsaction*="category"]'),
-          description: await getText(page, 'div[data-item-id*="description"]'),
-          url: await page.url()
-        };
-        
-        // Ambil foto
-        const photos = await qsAll(page, 'button[data-photo-index]');
-        data.photos = [];
-        for (const photo of photos) {
-          const style = await photo.getAttribute('style');
-          const match = style?.match(/url\("([^"]+)"\)/);
-          if (match) data.photos.push(match[1]);
-        }
-        
-        results.push(data);
-        
-        // Tutup dialog
-        await page.keyboard.press('Escape');
-        await rest(500, 1000);
-        
       } catch (error) {
-        console.error(`Error processing card: ${error.message}`);
-        continue;
+        throw new Error(`Error processing card: ${error.message}`);
       }
     }
     
-    if (results.length > 0) {
-      await setDB(results);
+    await setDB(results);
+    await page.close();
+    await ctx.close();
+    
+    return results;
+  } catch (error) {
+    if (browserInstance) {
+      await closeBrowser(browserInstance);
+      browserInstance = null;
+    }
+    throw error;
+  }
+}
+
+function viewResult(results) {
+  console.log('\nHasil Akhir:');
+  results.forEach((item, index) => {
+    console.log(`\n${index + 1}. ${item.name}`);
+    console.log(`   Alamat: ${item.address}`);
+    console.log(`   Telepon: ${item.phone}`);
+  }); 
+}
+
+async function getMultipleData(find) {
+  try {
+    const file = webpath('kecamatan_sukabumi.csv');
+    const dataList = getPosition(file);
+    const results = [];
+    
+    for(let i=0; i < dataList.length; i++) {
+      const uri = endPoint(find, dataList[i].myLongLat);
+      const data = await getData(uri);
+      results.push(...data);
     }
     
     return results;
-    
   } catch (error) {
-    console.error('Error in getData:', error);
-    throw error;
-  } finally {
-    // Cleanup
-    if (page) await page.close();
-    if (ctx) await ctx.close();
-  }
-}
-
-async function getMultipleData(url) {
-  try {
-    return await getData(url);
-  } catch (error) {
-    console.error('Error in getMultipleData:', error);
+    if (browserInstance) {
+      await closeBrowser(browserInstance);
+      browserInstance = null;
+    }
     throw error;
   }
 }
 
-export { getData, getMultipleData };
+export { endPoint, buildUrl, getData, getMultipleData }
